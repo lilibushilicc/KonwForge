@@ -1,6 +1,23 @@
 // 生产构建时通过 VITE_API_BASE 指向后端（如 https://xxx.onrender.com/api/v1）；
 // 本地开发与同域部署留空，走相对路径 + Vite 代理。
-const BASE: string = import.meta.env.VITE_API_BASE ?? "/api/v1";
+// 兜底：即便构建未注入 VITE_API_BASE，部署在 *.onrender.com 的静态站也会自动指向线上后端，
+// 避免“前端相对路径打自己、题库空白”的回归。
+const PROD_BACKEND = "https://quiz-server-83xe.onrender.com/api/v1";
+
+function resolveBase(): string {
+  const fromEnv = import.meta.env.VITE_API_BASE;
+  if (fromEnv) return fromEnv;
+  if (typeof window !== "undefined") {
+    const h = window.location.hostname;
+    // 静态站域名（quiz-web-*.onrender.com）打后端；后端自身（quiz-server-*.onrender.com）走相对
+    if (h.endsWith(".onrender.com") && !h.startsWith("quiz-server")) {
+      return PROD_BACKEND;
+    }
+  }
+  return "/api/v1";
+}
+
+const BASE: string = resolveBase();
 
 export class ApiError extends Error {
   code: number;

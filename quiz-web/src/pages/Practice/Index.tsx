@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -25,6 +25,7 @@ import { PageHeader } from "../../components/common/PageHeader";
 import { QuestionPlayer, EssaySelfEval } from "../../components/practice/QuestionPlayer";
 import { AnswerReveal } from "../../components/practice/AnswerReveal";
 import { ExamPlayer } from "../../components/practice/ExamPlayer";
+import { http } from "../../api/client";
 import { practiceApi, type PracticeSession, type PracticeSessionCreate } from "../../api/practice";
 import { categoriesApi } from "../../api/categories";
 import type { Category } from "../../api/categories";
@@ -319,6 +320,14 @@ function Player({ session }: { session: PracticeSession }) {
 export default function Practice() {
   const [params] = useSearchParams();
   const [session, setSession] = useState<PracticeSession | null>(null);
+
+  // 进入练习页即静默预热后端：把冷启动等待从「点按钮」提前到「进页面」。
+  // 用户设置参数（选模式/分类/题量）的这几秒里后端已唤醒，点「开始练习」基本秒回。
+  // 后端睡着时该请求会 502/超时，静默忽略（已有 loading + 自动重试兜底）。
+  useEffect(() => {
+    http.get("/health").catch(() => {});
+  }, []);
+
   const createMut = useMutation({
     mutationFn: (cfg: PracticeSessionCreate) => practiceApi.create(cfg),
     onSuccess: setSession,

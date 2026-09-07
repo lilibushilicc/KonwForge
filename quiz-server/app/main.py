@@ -2,12 +2,14 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 
 from app.api.v1.router import router as api_v1_router
 from app.core.config import settings
 from app.core.exceptions import register_exception_handlers
 from app.core.logging import get_logger, setup_logging
 from app.core.response import make_envelope_middleware
+from app.db.session import engine
 
 logger = get_logger(__name__)
 
@@ -16,6 +18,14 @@ logger = get_logger(__name__)
 async def lifespan(app: FastAPI):
     setup_logging()
     logger.info("%s starting, db=%s", settings.APP_NAME, settings.DB_URL)
+    # 冷启动预热：启动期就与数据库建一次连接，把建连/认证握手的开销从「首个用户请求」
+    # 转移到服务启动阶段；这样实例一旦开始接流量，首请求就不需要再走漫长的 DB 握手。
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        logger.info("db warmup ok")
+    except Exception as e:  # 预热失败不阻碍启动，首请求会自行重试
+        logger.warning("db warmup skipped: %s", e)
     yield
     logger.info("%s stopped", settings.APP_NAME)
 

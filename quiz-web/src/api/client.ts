@@ -19,6 +19,21 @@ function resolveBase(): string {
 
 const BASE: string = resolveBase();
 
+// 预连接后端域名：浏览器提前完成 TCP/TLS 握手，降低首个真实请求的延迟
+// （对 Render 免费实例冷启动尤其有用，把建连开销从「点开始练习」挪到页面加载时）
+if (BASE.startsWith("http")) {
+  try {
+    const origin = BASE.replace(/\/api\/v1\/?$/, "");
+    const link = document.createElement("link");
+    link.rel = "preconnect";
+    link.href = origin;
+    link.crossOrigin = "anonymous";
+    document.head.appendChild(link);
+  } catch {
+    /* 忽略：preconnect 失败不影响功能 */
+  }
+}
+
 export class ApiError extends Error {
   code: number;
   data?: unknown;

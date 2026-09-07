@@ -8,7 +8,7 @@
 services:
   - type: web
     name: quiz-server
-    runtime: python-3.12
+    runtime: python  # 具体版本用 quiz-server/.python-version 锁定（Render 忽略 runtime.txt / PYTHON_VERSION 简写）
     rootDir: quiz-server
     plan: free
     branch: main

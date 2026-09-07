@@ -1,0 +1,470 @@
+:root {
+  --content-max: 1180px;
+
+  /* 亮色面层 */
+  --bg-body: #f7f8fa;
+  --bg-surface: #ffffff;
+  --bg-soft: #eef3f9;
+  --bg-code: #fafafa;
+  --border: #f0f0f0;
+  --border-strong: #d9d9d9;
+  --text: rgba(0, 0, 0, 0.85);
+  --text-secondary: rgba(0, 0, 0, 0.45);
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* 暗色面层 */
+  --bg-body: #0f1115;
+  --bg-surface: #161a22;
+  --bg-soft: #1f2733;
+  --bg-code: #1a1f28;
+  --border: #2a2f38;
+  --border-strong: #3a4150;
+  --text: rgba(255, 255, 255, 0.85);
+  --text-secondary: rgba(255, 255, 255, 0.45);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg-body);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+}
+
+.page {
+  max-width: var(--content-max);
+  margin: 0 auto;
+  padding: 24px 20px 48px;
+}
+
+.page-header {
+  margin-bottom: 16px;
+}
+
+.page-header h2 {
+  margin: 0 0 4px;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.page-header .sub {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.muted {
+  color: var(--text-secondary);
+}
+
+.q-stem {
+  white-space: pre-wrap;
+  line-height: 1.6;
+}
+
+.option-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 4px 0;
+}
+
+.option-key {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid var(--border-strong);
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+/* 代码块（Coding 题型模板 / 参考实现） */
+.code-block {
+  background: var(--bg-code);
+  padding: 12px;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin: 0;
+}
+
+/* 分类树节点：悬浮时显示操作按钮 */
+.cat-node {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cat-actions {
+  display: none;
+  gap: 4px;
+  margin-left: 8px;
+  color: var(--text-secondary);
+}
+
+.ant-tree-node-content-wrapper:hover .cat-actions,
+.cat-actions:hover {
+  display: inline-flex;
+}
+
+.cat-actions .anticon {
+  font-size: 12px;
+  padding: 2px;
+}
+
+.cat-actions .anticon:hover {
+  color: #4a6fa5;
+}
+
+[data-theme="dark"] .cat-actions .anticon:hover {
+  color: #7fa3d4;
+}
+
+/* ===================== 移动端适配（窄屏 < 768px） ===================== */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+body {
+  overflow-x: hidden; /* 横向溢出兜底 */
+  -webkit-overflow-scrolling: touch; /* iOS 惯性滚动 */
+  overscroll-behavior-y: contain; /* 避免下拉触发整页回弹 */
+}
+
+a,
+button,
+.ant-btn,
+.ant-switch {
+  touch-action: manipulation; /* 去除点击 300ms 延迟与双击缩放 */
+}
+
+.ant-layout {
+  min-height: 100dvh; /* 适配移动端动态视口（地址栏） */
+}
+
+@media (max-width: 767px) {
+  /* 容器与页头 */
+  .page {
+    padding: 16px 12px calc(40px + env(safe-area-inset-bottom));
+  }
+
+  .page-header {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 10px !important;
+  }
+
+  .page-header > div:last-child {
+    width: 100%;
+  }
+
+  .page-header .ant-space {
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+
+  .page-header h2 {
+    font-size: 18px;
+  }
+
+  /* 触控元素最小可点击尺寸（手指友好，≥40px） */
+  .ant-btn:not(.ant-btn-link),
+  .ant-input,
+  .ant-input-affix-wrapper,
+  .ant-input-number,
+  .ant-select .ant-select-selector,
+  .ant-picker {
+    min-height: 40px;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .ant-btn {
+    justify-content: center;
+  }
+
+  /* 题库筛选表单：堆叠为单列，控件占满 */
+  .filter-form {
+    flex-wrap: wrap;
+  }
+
+  .filter-form .ant-form-item {
+    flex: 1 1 100%;
+    flex-direction: column;
+    align-items: stretch;
+    row-gap: 4px;
+    margin-right: 0;
+  }
+
+  .filter-form .ant-form-item-label {
+    text-align: left;
+    padding: 0;
+  }
+
+  .filter-form .ant-form-item-control {
+    width: 100%;
+  }
+
+  .filter-form .ant-select,
+  .filter-form .ant-tree-select,
+  .filter-form .ant-input,
+  .filter-form .ant-input-number,
+  .filter-form .ant-segmented {
+    width: 100% !important;
+  }
+
+  /* 错题本筛选：竖排且占满 */
+  .mistake-filter {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    width: 100%;
+  }
+
+  .mistake-filter > div {
+    width: 100% !important;
+  }
+
+  .mistake-filter .ant-input-search,
+  .mistake-filter .ant-tree-select,
+  .mistake-filter .ant-select,
+  .mistake-filter .ant-input {
+    width: 100% !important;
+  }
+
+  .mistake-filter > .ant-btn {
+    width: 100%;
+  }
+
+  /* 批量操作条：窄屏竖排占满 */
+  .batch-bar {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    width: 100%;
+  }
+
+  .batch-bar > div {
+    width: 100% !important;
+  }
+
+  .batch-bar .ant-select,
+  .batch-bar .ant-input {
+    width: 100% !important;
+  }
+
+  /* 练习设置卡片：标签在上、控件占满 */
+  .setup-card .ant-space-item > div {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+  }
+
+  .setup-card .ant-space-item > div > .ant-select,
+  .setup-card .ant-space-item > div > .ant-input-number {
+    width: 100% !important;
+    margin-left: 0 !important;
+  }
+
+  /* 录题表单：固定宽度控件在窄屏占满 */
+  .editor-form .ant-select,
+  .editor-form .ant-input,
+  .editor-form .ant-input-number,
+  .editor-form .ant-space-compact {
+    width: 100% !important;
+  }
+
+  .editor-form .ant-space-compact .ant-tree-select {
+    width: 100% !important;
+  }
+
+  /* 弹层在窄屏不溢出 */
+  .ant-modal {
+    max-width: calc(100vw - 16px) !important;
+    margin: 0 auto;
+  }
+
+  .ant-modal-confirm .ant-modal-confirm-body .ant-modal-confirm-content {
+    white-space: normal;
+  }
+}
+
+/* ===================== 练习：整卷考试 + 答题卡 ===================== */
+.exam-bar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.exam-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 20px;
+  align-items: start;
+  max-width: 1080px;
+  margin: 0 auto;
+}
+
+.exam-main {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.exam-q__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.exam-side {
+  position: sticky;
+  top: 84px;
+}
+
+.answer-sheet {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+}
+
+.answer-sheet__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.answer-sheet__grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+}
+
+.sheet-cell {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-soft);
+  color: var(--text);
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  transition: border-color 0.15s, transform 0.1s;
+}
+
+.sheet-cell:hover {
+  border-color: #4a6fa5;
+  transform: translateY(-1px);
+}
+
+.sheet-cell.is-unanswered {
+  border-color: #e0726b;
+  color: #e0726b;
+}
+
+.sheet-cell.is-answered,
+.sheet-cell.is-correct {
+  background: rgba(82, 196, 26, 0.15);
+  border-color: #52c41a;
+  color: #52c41a;
+}
+
+.sheet-cell.is-incorrect {
+  background: rgba(255, 77, 79, 0.15);
+  border-color: #ff4d4f;
+  color: #ff4d4f;
+}
+
+.sheet-cell__flag {
+  position: absolute;
+  top: -6px;
+  right: -4px;
+  font-size: 11px;
+  line-height: 1;
+  color: #faad14;
+}
+
+.answer-sheet__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.answer-sheet__legend i.dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+
+.answer-sheet__legend .dot.is-answered,
+.answer-sheet__legend .dot.is-correct {
+  background: #52c41a;
+}
+
+.answer-sheet__legend .dot.is-unanswered {
+  background: #e0726b;
+}
+
+.answer-sheet__legend .dot.is-incorrect {
+  background: #ff4d4f;
+}
+
+.answer-sheet__legend .dot.is-flag {
+  background: #faad14;
+}
+
+@media (max-width: 767px) {
+  .exam-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .exam-side {
+    display: none;
+  }
+
+  .answer-sheet__grid {
+    grid-template-columns: repeat(6, 1fr);
+  }
+}

@@ -1,0 +1,109 @@
+{
+  "questions": [
+    {
+      "type": "single_choice",
+      "stem": "在 Python 中，闭包（closure）捕获的是外部变量的什么？",
+      "difficulty": 3,
+      "tags": ["闭包", "作用域"],
+      "analysis": "闭包捕获的是变量的引用（绑定），而非定义时的“值快照”。这也是循环中用 lambda 常见陷阱的根源：所有 lambda 共享同一变量引用，循环结束后取到的是最终值。",
+      "payload": {
+        "options": [
+          { "key": "A", "text": "定义时的值（快照）" },
+          { "key": "B", "text": "变量的引用（绑定）" },
+          { "key": "C", "text": "变量的类型" },
+          { "key": "D", "text": "外层函数的函数名" }
+        ]
+      },
+      "answer": { "correct": "B" },
+      "judge_config": {}
+    },
+    {
+      "type": "single_choice",
+      "stem": "对于不带参数的装饰器 @timer，它等价于对原函数 func 执行下列哪种调用？",
+      "difficulty": 2,
+      "tags": ["装饰器", "语法糖"],
+      "analysis": "@decorator 语法糖等价于 func = decorator(func)，即把原函数传入装饰器、用其返回值替换原函数。",
+      "payload": {
+        "options": [
+          { "key": "A", "text": "func = timer" },
+          { "key": "B", "text": "func = timer(func)" },
+          { "key": "C", "text": "timer = func()" },
+          { "key": "D", "text": "func(timer)" }
+        ]
+      },
+      "answer": { "correct": "B" },
+      "judge_config": {}
+    },
+    {
+      "type": "multiple_choice",
+      "stem": "下列哪些做法可以在 Python 中“实现装饰器效果”（为函数附加额外逻辑）？",
+      "difficulty": 3,
+      "tags": ["装饰器", "高阶函数"],
+      "analysis": "@decorator 语法糖本质就是手动调用 decorator(func) 的简写；二者都能实现装饰器效果。functools.wraps 是编写装饰器时用于保留被装饰函数元信息（__name__/__doc__）的推荐做法。",
+      "payload": {
+        "options": [
+          { "key": "A", "text": "使用 @decorator 语法糖" },
+          { "key": "B", "text": "手动调用 wrapper = decorator(func)" },
+          { "key": "C", "text": "直接把函数赋值给另一个变量（不包装）" },
+          { "key": "D", "text": "在装饰器内部借助 functools.wraps" }
+        ]
+      },
+      "answer": { "correct": ["A", "B", "D"] },
+      "judge_config": { "partial_credit": true, "partial_ratio": 0.5, "allow_extra": false }
+    },
+    {
+      "type": "fill_blank",
+      "stem": "在闭包中若要修改外层（非全局）变量，需要用 ____ 关键字声明；编写装饰器时通常用 functools.____ 来保留被装饰函数的元信息（如 __name__）。",
+      "difficulty": 3,
+      "tags": ["闭包", "装饰器", "关键字"],
+      "analysis": "nonlocal 声明外层（非全局）作用域变量，使其可在内层函数中被重新赋值；functools.wraps 用 functools.update_wrapper 拷贝 __name__/__doc__ 等元信息。",
+      "payload": {
+        "blanks": [
+          { "id": 1, "hint": "声明外层可变变量的关键字", "placeholder": "" },
+          { "id": 2, "hint": "functools 中用于保留元信息的函数", "placeholder": "" }
+        ]
+      },
+      "answer": {
+        "blanks": [
+          { "id": 1, "accepted": ["nonlocal"], "regex": null, "case_sensitive": false, "numeric_tolerance": 0.001 },
+          { "id": 2, "accepted": ["wraps"], "regex": null, "case_sensitive": false, "numeric_tolerance": 0.001 }
+        ]
+      },
+      "judge_config": { "ordered": true }
+    },
+    {
+      "type": "coding",
+      "stem": "编写装饰器 memoize：缓存函数调用结果，相同参数再次调用时直接返回缓存值（沙箱未启用，标记人工判分）。",
+      "difficulty": 4,
+      "tags": ["装饰器", "缓存", "高阶函数"],
+      "analysis": "用字典以参数为键缓存结果；每次调用先查缓存，命中则返回，未命中则计算并写入缓存。建议用 functools.wraps 保留元信息。",
+      "payload": {
+        "language": "python",
+        "template": "import functools\n\ndef memoize(func):\n    cache = {}\n    # 在此实现 wrapper\n    def wrapper(*args):\n        pass\n    return wrapper",
+        "testcases": [
+          { "input": "f = memoize(lambda x: x + 1); f(1)", "expected": "2", "hidden": false },
+          { "input": "f = memoize(lambda x: x * x); f(3)", "expected": "9", "hidden": false }
+        ]
+      },
+      "answer": {
+        "reference_code": "import functools\n\ndef memoize(func):\n    cache = {}\n    @functools.wraps(func)\n    def wrapper(*args):\n        if args not in cache:\n            cache[args] = func(*args)\n        return cache[args]\n    return wrapper",
+        "complexity": "查表均摊 O(1)，空间 O(调用参数种类数)"
+      },
+      "judge_config": { "sandbox": false }
+    },
+    {
+      "type": "essay",
+      "stem": "请简述装饰器的执行时机，以及当函数被多层装饰器（如 @a @b def f()）装饰时，各装饰器的应用顺序是怎样的。",
+      "difficulty": 3,
+      "tags": ["装饰器", "执行时机", "作用域"],
+      "analysis": "装饰器在被装饰函数定义时（模块加载/导入阶段）立即执行，而非函数调用时；它把原函数替换为装饰器返回的对象。多层装饰器从最靠近函数的开始：@b 先作用于 f 得到中间函数，再交由 @a 装饰，最终等价于 a(b(f))。",
+      "payload": { "max_chars": 400 },
+      "answer": {
+        "reference_answer": "装饰器在被装饰函数定义时立即执行（导入/加载阶段），而非调用时；它将原函数替换为装饰器返回的对象。多层装饰器从最靠近函数的装饰器开始应用：@b 先作用于 f 得到中间函数，再交由 @a 装饰，因此最终等价于 a(b(f))，即内层装饰器先执行、外层后包裹。",
+        "keywords": ["定义时", "执行时机", "内层先", "a(b(f))", "wraps"],
+        "min_chars": 40
+      },
+      "judge_config": {}
+    }
+  ]
+}

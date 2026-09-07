@@ -1,0 +1,92 @@
+{
+  "questions": [
+    {
+      "type": "single_choice",
+      "stem": "在 Python 中，以下关于可变对象与不可变对象的说法，哪一项是正确的？",
+      "difficulty": 2,
+      "tags": ["对象模型", "不可变对象"],
+      "analysis": "int、str、tuple 为不可变对象，list、dict、set 为可变对象。对不可变对象重新赋值会创建新对象，而非原地修改。",
+      "payload": {
+        "options": [
+          { "key": "A", "text": "list 和 dict 属于不可变对象" },
+          { "key": "B", "text": "str 和 tuple 属于不可变对象" },
+          { "key": "C", "text": "对 int 变量重新赋值会原地修改原对象" },
+          { "key": "D", "text": "set 是不可变对象" }
+        ]
+      },
+      "answer": { "correct": "B" },
+      "judge_config": {}
+    },
+    {
+      "type": "multiple_choice",
+      "stem": "下列哪些操作会修改原列表（原地变更，不产生新对象）？",
+      "difficulty": 3,
+      "tags": ["列表", "可变对象"],
+      "analysis": "list.append / list.sort 以及切片赋值都原地修改原列表；而 + 拼接与 sorted() 返回新对象，原列表不变。",
+      "payload": {
+        "options": [
+          { "key": "A", "text": "lst.append(1)" },
+          { "key": "B", "text": "lst = lst + [1]" },
+          { "key": "C", "text": "lst.sort()" },
+          { "key": "D", "text": "sorted(lst)" }
+        ]
+      },
+      "answer": { "correct": ["A", "C"] },
+      "judge_config": { "partial_credit": true, "partial_ratio": 0.5, "allow_extra": false }
+    },
+    {
+      "type": "fill_blank",
+      "stem": "Python 中用于定义匿名函数的关键字是 ____；用它写一个返回两数之和的表达式：lambda a, b: ____。",
+      "difficulty": 2,
+      "tags": ["lambda", "关键字"],
+      "analysis": "lambda 用于创建匿名函数；其表达式体直接返回结果，无需 return。",
+      "payload": {
+        "blanks": [
+          { "id": 1, "hint": "定义匿名函数的关键字", "placeholder": "" },
+          { "id": 2, "hint": "返回 a+b 的表达式", "placeholder": "" }
+        ]
+      },
+      "answer": {
+        "blanks": [
+          { "id": 1, "accepted": ["lambda"], "regex": null, "case_sensitive": false, "numeric_tolerance": 0.001 },
+          { "id": 2, "accepted": ["a+b", "a + b"], "regex": null, "case_sensitive": false, "numeric_tolerance": 0.001 }
+        ]
+      },
+      "judge_config": { "ordered": true }
+    },
+    {
+      "type": "coding",
+      "stem": "编写函数 two_sum：给定整数列表 nums 与目标值 target，返回两数之和为 target 的下标列表（可假设至少存在一组解）。",
+      "difficulty": 4,
+      "tags": ["算法", "哈希表"],
+      "analysis": "使用哈希表记录已遍历数值到下标的映射，可在 O(n) 时间内找到解。",
+      "payload": {
+        "language": "python",
+        "template": "def two_sum(nums, target):\n    # 在此实现\n    pass",
+        "testcases": [
+          { "input": "[2,7,11,15], 9", "expected": "[0,1]", "hidden": false },
+          { "input": "[3,2,4], 6", "expected": "[1,2]", "hidden": false }
+        ]
+      },
+      "answer": {
+        "reference_code": "def two_sum(nums, target):\n    seen = {}\n    for i, n in enumerate(nums):\n        if target - n in seen:\n            return [seen[target - n], i]\n        seen[n] = i\n    return []",
+        "complexity": "时间 O(n)，空间 O(n)"
+      },
+      "judge_config": { "sandbox": false }
+    },
+    {
+      "type": "essay",
+      "stem": "请简述 Python 中深拷贝（deepcopy）与浅拷贝（copy）的区别，并说明在包含嵌套可变对象时为何通常需要深拷贝。",
+      "difficulty": 3,
+      "tags": ["拷贝", "可变对象"],
+      "analysis": "浅拷贝只复制顶层对象，嵌套对象仍共享引用；深拷贝递归复制所有层级，彼此完全独立。修改嵌套对象时浅拷贝会产生副作用。",
+      "payload": { "max_chars": 500 },
+      "answer": {
+        "reference_answer": "浅拷贝 copy 仅创建外层新对象，内部嵌套对象与原对象共享引用；deepcopy 递归复制每一层，得到完全独立的副本。当对象包含嵌套列表/字典等可变结构时，浅拷贝后修改嵌套内容会影响原对象，因此需要 deepcopy 来隔离。",
+        "keywords": ["浅拷贝", "深拷贝", "引用", "嵌套", "独立", { "word": "递归", "weight": 2 }],
+        "min_chars": 30
+      },
+      "judge_config": {}
+    }
+  ]
+}

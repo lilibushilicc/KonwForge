@@ -1,0 +1,8 @@
+# WorkBuddy 项目数据与本地杂项，不入库
+.workbuddy/
+.tasklist.txt
+
+# 操作系统杂项
+Thumbs.db
+.DS_Store
+desktop.ini

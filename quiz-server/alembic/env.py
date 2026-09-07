@@ -1,11 +1,10 @@
 from logging.config import fileConfig
 
 from alembic import context
-from sqlalchemy import engine_from_config, pool
 
 from app.core.config import settings
 from app.db.base import Base
-from app.db.session import resolve_db_url
+from app.db.session import resolve_db_url, engine as _app_engine
 import app.models  # noqa: F401  保证全部模型注册到 metadata
 
 config = context.config
@@ -32,11 +31,8 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
-    connectable = engine_from_config(
-        config.get_section(config.config_ini_section, {}),
-        prefix="sqlalchemy.",
-        poolclass=pool.NullPool,
-    )
+    # 复用 app 的 engine（含 libsql 的 auth_token connect_args），避免 alembic 自建引擎丢凭证
+    connectable = _app_engine
     with connectable.connect() as connection:
         context.configure(
             connection=connection,

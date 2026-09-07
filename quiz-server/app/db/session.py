@@ -13,7 +13,7 @@ logger = get_logger(__name__)
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
-def _normalize_libsql(url: str):
+def _normalize_libsql(url: str) -> tuple[str, str | None]:
     """libsql://host/db?authToken=xxx → (sqlite+libsql://host/db?secure=true, auth_token)
 
     sqlalchemy-libsql 只认 `sqlite+libsql://` 这个 dialect 前缀，且 auth token 必须走
@@ -31,13 +31,8 @@ def _normalize_libsql(url: str):
     return new_url, token
 
 
-def resolve_db_url(url: str) -> str:
-    """sqlite:///./data/quiz.db → 绝对路径；libsql://… → sqlite+libsql://…（token 单独走 connect_args）。"""
-    if url.startswith("libsql"):
-        norm, _ = _normalize_libsql(url)
-        return norm
-    if not url.startswith("sqlite"):
-        return url
+def _resolve_sqlite_path(url: str) -> str:
+    """sqlite:///./data/quiz.db → 项目内绝对路径，避免依赖进程启动目录。"""
     parsed = urlparse(url)
     path = parsed.path.lstrip("/")
     if not path:
@@ -49,16 +44,29 @@ def resolve_db_url(url: str) -> str:
     return f"sqlite:///{abs_path.as_posix()}"
 
 
-def _engine_kwargs(url: str) -> dict:
-    if url.startswith("libsql"):
-        # Turso/libSQL 是 HTTP 客户端，无本地文件、不必 check_same_thread，也不需要 pool_pre_ping
-        return {"future": True}
-    if url.startswith("sqlite"):
-        # SQLite 需要放宽线程限制；外键约束默认关闭，显式打开
-        return {"connect_args": {"check_same_thread": False}, "future": True}
+def _parse_db_url(raw: str) -> tuple[str, dict]:
+    """单一真理来源：把配置里的 DB_URL 解析成 (sqlalchemy 用的 url, create_engine 的 kwargs)。
+
+    之前 resolve_db_url 与模块级 token 抽取各自重新解析 URL（重复调用、且 libsql 分支
+    在归一化后被淹没成死代码）。合并到这里后只解析一次，引擎参数也一目了然。
+    """
+    if raw.startswith("libsql"):
+        url, token = _normalize_libsql(raw)
+        connect_args = {"auth_token": token} if token else {}
+        return url, {"future": True, "connect_args": connect_args}
+    if raw.startswith("sqlite"):
+        return _resolve_sqlite_path(raw), {
+            "future": True,
+            "connect_args": {"check_same_thread": False},
+        }
     # 服务端 PostgreSQL / Neon：开启连接预检，避免池里残留已断开的连接
     # （Neon 等 serverless 数据库会回收空闲连接，pre_ping 能自动重建）。
-    return {"future": True, "pool_pre_ping": True}
+    return raw, {"future": True, "pool_pre_ping": True}
+
+
+def resolve_db_url(url: str) -> str:
+    """供 Alembic offline 模式等只需 url 字符串的场景使用（不连库、不含 token）。"""
+    return _parse_db_url(url)[0]
 
 
 def _enable_sqlite_fk(dbapi_conn, _conn_record) -> None:
@@ -72,20 +80,11 @@ def _enable_sqlite_fk(dbapi_conn, _conn_record) -> None:
         pass
 
 
-DB_URL = resolve_db_url(settings.DB_URL)
-# libsql:// 场景：从 URL 抽出 auth token，交给 connect_args（sqlalchemy-libsql 只认这里）
-_libsql_token = None
-if settings.DB_URL.startswith("libsql"):
-    _, _libsql_token = _normalize_libsql(settings.DB_URL)
+DB_URL, _ENGINE_KWARGS = _parse_db_url(settings.DB_URL)
+engine = create_engine(DB_URL, echo=settings.DB_ECHO, **_ENGINE_KWARGS)
 
-_engine_kwargs_final = _engine_kwargs(DB_URL)
-if _libsql_token:
-    _engine_kwargs_final.setdefault("connect_args", {})
-    _engine_kwargs_final["connect_args"]["auth_token"] = _libsql_token
-
-engine = create_engine(DB_URL, echo=settings.DB_ECHO, **_engine_kwargs_final)
-
-if DB_URL.startswith("sqlite") or DB_URL.startswith("libsql"):
+# sqlite:// 与 sqlite+libsql:// 都走 SQLite 系，需要显式开启外键约束
+if DB_URL.startswith("sqlite"):
     from sqlalchemy import event
 
     event.listen(engine, "connect", _enable_sqlite_fk)

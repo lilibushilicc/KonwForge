@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 
 from app.judging.registry import judge as do_judge
 from app.models.attempt import Attempt
+from app.models.category import Category
 from app.models.mistake import Mistake
 from app.models.practice_session import PracticeSession
 from app.models.question import Question, QuestionStat
@@ -57,11 +58,37 @@ def _order_by_type(questions: list[Question]) -> list[Question]:
 # --------------------------------------------------------------------------- #
 # 选题
 # --------------------------------------------------------------------------- #
+def _expand_category_ids(db: Session, category_ids: list[int]) -> list[int]:
+    """把选中的分类扩展为『自身 + 所有后代分类』。
+
+    分类是多级树，题目只挂在叶子分类上；选父分类练题时应包含其下全部子分类的题目，
+    否则选根分类（如「Python 知识点」）会匹配到 0 题。
+    """
+    if not category_ids:
+        return category_ids
+    rows = db.execute(select(Category.id, Category.parent_id)).all()
+    children: dict[int | None, list[int]] = {}
+    for cid, pid in rows:
+        children.setdefault(pid, []).append(cid)
+    result: set[int] = set()
+    stack = list(category_ids)
+    while stack:
+        cur = stack.pop()
+        if cur in result:
+            continue
+        result.add(cur)
+        for child in children.get(cur, []):
+            if child not in result:
+                stack.append(child)
+    return list(result)
+
+
 def _build_query(db: Session, f: SessionFilter, base=None):
     q = base if base is not None else select(Question)
     q = q.where(Question.status == "active")
     if f.category_ids:
-        q = q.where(Question.category_id.in_(f.category_ids))
+        expanded = _expand_category_ids(db, f.category_ids)
+        q = q.where(Question.category_id.in_(expanded))
     if f.types:
         q = q.where(Question.type.in_([t.value if hasattr(t, "value") else t for t in f.types]))
     if f.difficulties:

@@ -71,7 +71,8 @@ function SetupCard({ onStart }: { onStart: (cfg: PracticeSessionCreate) => void 
     }
     onStart({
       mode,
-      count: isCategory ? 9999 : count,
+      // 分类模式后端忽略 count（练全部分类题），这里传有效值即可；不再用 9999 哨兵（会触发 count>200 的 422）
+      count,
       filter: {
         category_ids: catIds,
         types: isCategory ? [] : types,

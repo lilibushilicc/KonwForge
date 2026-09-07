@@ -168,3 +168,22 @@ def test_mistake_mode_session_only_picks_mistakes(client):
     msess = unwrap(client.post("/api/v1/practice/sessions", json={"mode": "mistake", "count": 10}))
     assert msess["total_count"] == 1
     assert msess["items"][0]["question_id"] == q_multi["id"]
+
+
+def test_category_mode_expands_descendants(client):
+    """回归：选父分类建分类练习会话时，应展开到其下全部子分类的题目。"""
+    root = unwrap(client.post("/api/v1/categories", json={"name": "回归测试根"}))
+    child = unwrap(client.post("/api/v1/categories", json={"name": "回归测试子", "parent_id": root["id"]}))
+
+    # 题只挂在叶子 child 下
+    q1 = unwrap(client.post("/api/v1/questions", json={**SINGLE, "category_id": child["id"]}))
+    q2 = unwrap(client.post("/api/v1/questions", json={**FILL, "category_id": child["id"]}))
+
+    # 选 root（父分类）建分类练习会话：应展开到 child，拿到 2 题，且不再触发 count>200 的 422
+    sess = unwrap(client.post("/api/v1/practice/sessions", json={
+        "mode": "category",
+        "filter": {"category_ids": [root["id"]]},
+    }))
+    assert sess["total_count"] == 2
+    got = {i["question_id"] for i in sess["items"]}
+    assert got == {q1["id"], q2["id"]}

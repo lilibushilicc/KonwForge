@@ -8,20 +8,17 @@
 services:
   - type: web
     name: quiz-server
-    runtime: python
+    runtime: python-3.12
     rootDir: quiz-server
     plan: free
     branch: main
     buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    # 迁移与启动串在一起：Render release/pre-deploy 阶段拿不到 env，在 start 阶段跑 alembic 才能连库
+    startCommand: alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
-    # 首发/发版先跑迁移，保证表结构与代码一致
-    releaseCommand: alembic upgrade head
     envVars:
-      - key: PYTHON_VERSION
-        value: "3.12"
       - key: DB_URL
-        sync: false # Neon 连接串（psql 池化串），形如 postgresql+psycopg://user:pass@ep-xxx-pooler.region.aws.neon.tech/db?sslmode=require
+        sync: false # 数据库 DSN：本地用 postgresql+psycopg://，线上用 libsql://（Turso），形如 libsql://<org>-<db>.turso.io/<db>?authToken=...
       - key: CORS_ORIGINS
         sync: false # 前端域名，逗号分隔或 JSON 数组
       - key: DEBUG

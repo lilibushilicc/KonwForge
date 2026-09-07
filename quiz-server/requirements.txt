@@ -100,3 +100,4 @@ watchfiles==1.2.0
     # via uvicorn
 websockets==17.1
     # via uvicorn
+sqlalchemy-libsql>=0.1  # Turso/libSQL 驱动（手动追加；恢复网络后用 `uv export --format requirements-txt --no-hashes -o requirements.txt` 重新生成以锁定版本）

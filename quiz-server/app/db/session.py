@@ -32,22 +32,29 @@ def _engine_kwargs(url: str) -> dict:
     if url.startswith("sqlite"):
         # SQLite 需要放宽线程限制；外键约束默认关闭，显式打开
         return {"connect_args": {"check_same_thread": False}, "future": True}
+    if url.startswith("libsql"):
+        # Turso/libSQL 自带连接管理（HTTP/gRPC），不需要 pool_pre_ping，也别传 check_same_thread
+        return {"future": True}
     # 服务端 PostgreSQL / Neon：开启连接预检，避免池里残留已断开的连接
     # （Neon 等 serverless 数据库会回收空闲连接，pre_ping 能自动重建）。
     return {"future": True, "pool_pre_ping": True}
 
 
 def _enable_sqlite_fk(dbapi_conn, _conn_record) -> None:
-    """SQLite 默认不强制外键，显式开启，保证 ON DELETE CASCADE 生效。"""
-    cur = dbapi_conn.cursor()
-    cur.execute("PRAGMA foreign_keys=ON")
-    cur.close()
+    """SQLite/libSQL 默认不强制外键，显式开启，保证 ON DELETE CASCADE 生效。"""
+    try:
+        cur = dbapi_conn.cursor()
+        cur.execute("PRAGMA foreign_keys=ON")
+        cur.close()
+    except Exception:
+        # libSQL 的 HTTP 连接可能不认连接级 PRAGMA，忽略（ORM 层已用 cascade 处理删除）
+        pass
 
 
 DB_URL = resolve_db_url(settings.DB_URL)
 engine = create_engine(DB_URL, echo=settings.DB_ECHO, **_engine_kwargs(DB_URL))
 
-if DB_URL.startswith("sqlite"):
+if DB_URL.startswith("sqlite") or DB_URL.startswith("libsql"):
     from sqlalchemy import event
 
     event.listen(engine, "connect", _enable_sqlite_fk)

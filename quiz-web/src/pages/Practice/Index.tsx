@@ -54,7 +54,13 @@ function buildTree(cats: Category[]) {
   return roots;
 }
 
-function SetupCard({ onStart }: { onStart: (cfg: PracticeSessionCreate) => void }) {
+function SetupCard({
+  onStart,
+  creating,
+}: {
+  onStart: (cfg: PracticeSessionCreate) => void;
+  creating?: boolean;
+}) {
   const { data: cats = [] } = useQuery({ queryKey: ["categories"], queryFn: categoriesApi.list });
   const [mode, setMode] = useState<"practice" | "exam" | "category">("practice");
   const [count, setCount] = useState(10);
@@ -162,7 +168,13 @@ function SetupCard({ onStart }: { onStart: (cfg: PracticeSessionCreate) => void 
           </>
         )}
 
-        <Button type="primary" size="large" icon={<PlayCircleOutlined />} onClick={handleStart}>
+        <Button
+          type="primary"
+          size="large"
+          icon={<PlayCircleOutlined />}
+          onClick={handleStart}
+          loading={creating}
+        >
           开始练习
         </Button>
       </Space>
@@ -310,7 +322,11 @@ export default function Practice() {
   const createMut = useMutation({
     mutationFn: (cfg: PracticeSessionCreate) => practiceApi.create(cfg),
     onSuccess: setSession,
-    onError: () => message.error("创建会话失败"),
+    onError: () => message.error("创建会话失败，可能后端正在启动，请稍后重试"),
+    // Render 免费实例冷启动会返回 502/网络错误，自动重试一次通常即可连上已唤醒的实例
+    retry: (failureCount, err: any) =>
+      failureCount < 2 && (!err?.response || (err?.response?.status ?? 0) >= 500),
+    retryDelay: 1500,
   });
 
   const startCreate = useMemo(
@@ -337,7 +353,7 @@ export default function Practice() {
           <Player session={session} />
         )
       ) : (
-        <SetupCard onStart={startCreate} />
+        <SetupCard onStart={startCreate} creating={createMut.isPending} />
       )}
     </Wrap>
   );
@@ -356,7 +372,10 @@ function MistakeStart({ onReady }: { onReady: (s: PracticeSession) => void }) {
   const mut = useMutation({
     mutationFn: () => practiceApi.create({ mode: "mistake", count: 20 }),
     onSuccess: onReady,
-    onError: () => message.error("暂无错题可练"),
+    onError: () => message.error("暂无错题可练，可能后端正在启动，请稍后重试"),
+    retry: (failureCount, err: any) =>
+      failureCount < 2 && (!err?.response || (err?.response?.status ?? 0) >= 500),
+    retryDelay: 1500,
   });
   return (
     <Card style={{ maxWidth: 520, margin: "40px auto", textAlign: "center" }}>

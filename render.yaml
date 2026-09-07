@@ -1,0 +1,28 @@
+# Render 部署清单（仓库根，monorepo）：
+# 服务从 quiz-server/ 子目录构建；数据库用 Neon（外部，见 DB_URL）。
+# 用法：
+#   1) 本地已推送本文件到 GitHub（Render 需要能访问该仓库，私有仓库需在
+#      Render 控制台装 GitHub App 并授权该 repo）
+#   2) Render New Blueprint 关联仓库，或在 CLI：render services create
+#      环境变量里 DB_URL / CORS_ORIGINS 为 sync:false，需在控制台或 CLI 补值。
+services:
+  - type: web
+    name: quiz-server
+    runtime: python
+    rootDir: quiz-server
+    plan: free
+    branch: main
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    # 首发/发版先跑迁移，保证表结构与代码一致
+    releaseCommand: alembic upgrade head
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12"
+      - key: DB_URL
+        sync: false # Neon 连接串（psql 池化串），形如 postgresql+psycopg://user:pass@ep-xxx-pooler.region.aws.neon.tech/db?sslmode=require
+      - key: CORS_ORIGINS
+        sync: false # 前端域名，逗号分隔或 JSON 数组
+      - key: DEBUG
+        value: "false"

@@ -41,13 +41,15 @@ from pathlib import Path
 # 允许从项目根直接运行
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+import sqlalchemy_libsql  # noqa: F401  # 注册 libsql 方言（Turso 连接必需）
 from sqlalchemy import create_engine, select  # noqa: E402
 from sqlalchemy.orm import Session, sessionmaker  # noqa: E402
 
 from app.models.question import Question  # noqa: E402
 
 CODE_BLOCK_RE = re.compile(r"```(\w*)\n?([\s\S]*?)```")
-TOKEN_RE = re.compile(r"\{\{(\d+)\}\}|____")
+# 空位 = 连续 ≥4 个下划线（存量题用 ______ 6 连；dunder 如 __init__ 只有 2 连，不受影响）
+TOKEN_RE = re.compile(r"\{\{(\d+)\}\}|_{4,}")
 
 
 def split_code_blocks(stem: str) -> tuple[list[str], str]:
@@ -126,19 +128,22 @@ def main() -> int:
     args = ap.parse_args()
 
     if args.db:
-        engine = create_engine(args.db)
+        import sqlalchemy_libsql  # noqa: F401  注册 libsql 方言
+        from app.db.session import _parse_db_url
+
+        url, kwargs = _parse_db_url(args.db)
+        engine = create_engine(url, **kwargs)
+        SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+        db: Session = SessionLocal()
     else:
         try:
-            from app.core.config import settings
+            # 复用应用引擎：libsql 的 token 在 connect_args 里，自建引擎会丢 token 导致 401
+            from app.db.session import SessionLocal as AppSessionLocal
 
-            db_url = settings.DB_URL
+            db = AppSessionLocal()
         except Exception as exc:  # pragma: no cover
             print(f"读取应用配置失败（{exc}），请用 --db 显式指定连接串")
             return 2
-        engine = create_engine(db_url)
-
-    SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
-    db: Session = SessionLocal()
 
     try:
         questions = list(

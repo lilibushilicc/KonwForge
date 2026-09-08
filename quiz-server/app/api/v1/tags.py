@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 
+from app.core import cache
 from app.core.deps import DbSession
 from app.schemas.common import OkResponse
 from app.schemas.tag import TagCreate, TagOut, TagUpdate
@@ -9,6 +10,7 @@ router = APIRouter(prefix="/tags", tags=["tags"])
 
 
 @router.get("", response_model=list[TagOut], summary="标签列表（含题目引用数）")
+@cache.cached("tags")
 def list_tags(db: DbSession):
     tags = question_service.list_tags(db)
     counts = question_service.tag_question_counts(db)

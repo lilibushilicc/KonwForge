@@ -10,6 +10,7 @@ from io import StringIO
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.cache import invalidates_cache
 from app.core.exceptions import ConflictError
 from app.models.category import Category
 from app.models.question import Question
@@ -120,6 +121,7 @@ def _resolve_category(db: Session, name: str | None) -> int | None:
     return cat.id if cat else None
 
 
+@invalidates_cache
 def import_json(db: Session, items: list[dict], conflict: str = "skip") -> dict:
     """导入题目。conflict: skip（重复编号跳过）/ overwrite（按编号更新）/ rename（忽略编号新建）。"""
     total = len(items)

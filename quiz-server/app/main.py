@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from sqlalchemy import text
 
 from app.api.v1.router import router as api_v1_router
@@ -42,6 +43,8 @@ def create_app() -> FastAPI:
     app.state.debug = settings.DEBUG
     app.middleware("http")(make_envelope_middleware(settings.API_PREFIX))
 
+    # 题干含代码块的大 JSON 压缩后可减 60-80% 传输量，对慢带宽客户端收益明显
+    app.add_middleware(GZipMiddleware, minimum_size=1024)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins_list,

@@ -11,14 +11,14 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
 import random
 from datetime import datetime
+from typing import Optional
 
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
+from app.core.cache import invalidates_cache
 from app.judging.registry import judge as do_judge
 from app.models.attempt import Attempt
 from app.models.category import Category
@@ -38,7 +38,6 @@ from app.schemas.practice import (
     SessionSubmitResult,
 )
 from app.utils.code_gen import next_code
-
 
 # 固定题型顺序：选择题（单选 → 多选）→ 填空题 → 简答题 → 代码题
 TYPE_ORDER: dict[str, int] = {
@@ -103,14 +102,27 @@ def _pick_questions(db: Session, f: SessionFilter, count: int) -> list[Question]
         return []
     if len(ids) > count:
         ids = random.sample(ids, count)
-    questions = db.scalars(select(Question).where(Question.id.in_(ids))).all()
+    # 预加载出参所需关系（category/tags），避免 _to_play_out 逐题懒加载
+    questions = (
+        db.scalars(
+            select(Question)
+            .options(selectinload(Question.category), selectinload(Question.tags))
+            .where(Question.id.in_(ids))
+        )
+        .unique()
+        .all()
+    )
     # 固定题型顺序（选择题→填空题→简答题→代码题），同题型内按 id 稳定
     return _order_by_type(questions)
 
 
 def _pick_category_questions(db: Session, f: SessionFilter) -> list[Question]:
     """分类练习：返回该分类下全部题目，按固定题型顺序排列（不抽样、不随机）。"""
-    questions = db.scalars(_build_query(db, f)).all()
+    questions = (
+        db.scalars(_build_query(db, f).options(selectinload(Question.category), selectinload(Question.tags)))
+        .unique()
+        .all()
+    )
     return _order_by_type(questions)
 
 
@@ -123,7 +135,15 @@ def _pick_mistake_questions(db: Session, f: SessionFilter, count: int) -> list[Q
         return []
     if len(mids) > count:
         mids = random.sample(mids, count)
-    questions = db.scalars(select(Question).where(Question.id.in_(mids))).all()
+    questions = (
+        db.scalars(
+            select(Question)
+            .options(selectinload(Question.category), selectinload(Question.tags))
+            .where(Question.id.in_(mids))
+        )
+        .unique()
+        .all()
+    )
     return _order_by_type(questions)
 
 
@@ -249,6 +269,7 @@ def _grade_item(db: Session, session: PracticeSession, submit: AnswerSubmit) -> 
     )
 
 
+@invalidates_cache
 def answer_item(db: Session, session: PracticeSession, submit: AnswerSubmit) -> AnswerResult:
     r = _grade_item(db, session, submit)
     db.commit()
@@ -265,6 +286,7 @@ def answer_item(db: Session, session: PracticeSession, submit: AnswerSubmit) -> 
     return r
 
 
+@invalidates_cache
 def answer_batch(
     db: Session, session: PracticeSession, submits: list[AnswerSubmit]
 ) -> list[dict]:
@@ -326,6 +348,7 @@ def _update_mistake(db: Session, question_id: int, is_correct: Optional[bool]) -
 # --------------------------------------------------------------------------- #
 # 交卷
 # --------------------------------------------------------------------------- #
+@invalidates_cache
 def submit_session(db: Session, session: PracticeSession) -> SessionSubmitResult:
     items = db.scalars(select(SessionItem).where(SessionItem.session_id == session.id)).all()
     total = len(items)
@@ -399,14 +422,36 @@ def build_session_out(db: Session, session: PracticeSession) -> PracticeSessionO
     items = db.scalars(
         select(SessionItem).where(SessionItem.session_id == session.id).order_by(SessionItem.seq)
     ).all()
+    # 批量预取：题目（含 category/tags）与每题最新 attempt，各一条 IN 查询。
+    # 原逐题 db.get + 逐题查 attempt 在跨区库下是 2N 次往返（N=20 时 ~40 次）。
+    qids = {it.question_id for it in items}
+    questions: dict[int, Question] = {}
+    if qids:
+        questions = {
+            q.id: q
+            for q in db.scalars(
+                select(Question)
+                .options(selectinload(Question.category), selectinload(Question.tags))
+                .where(Question.id.in_(qids))
+            )
+            .unique()
+            .all()
+        }
+    answered_ids = [it.id for it in items if it.answered]
+    latest_attempt: dict[int, Attempt] = {}
+    if answered_ids:
+        # 升序遍历，后写覆盖前写 → dict 里留下的即每 item 最新一条
+        for a in db.scalars(
+            select(Attempt).where(Attempt.item_id.in_(answered_ids)).order_by(Attempt.id)
+        ).all():
+            latest_attempt[a.item_id] = a
+
     out_items: list[SessionItemOut] = []
     for it in items:
-        q = db.get(Question, it.question_id)
+        q = questions.get(it.question_id)
         reveal = None
         if it.answered:
-            attempt = db.scalars(
-                select(Attempt).where(Attempt.item_id == it.id).order_by(Attempt.id.desc()).limit(1)
-            ).first()
+            attempt = latest_attempt.get(it.id)
             reveal = {
                 "answer": q.answer if q else None,
                 "analysis": q.analysis if q else None,

@@ -3,8 +3,9 @@
 from typing import Any
 
 from sqlalchemy import func, or_, select
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
+from app.core.cache import invalidates_cache
 from app.core.exceptions import ConflictError, NotFoundError
 from app.models.category import Category
 from app.models.question import Question, QuestionStat
@@ -60,8 +61,14 @@ def list_questions(
         "difficulty": Question.difficulty,
         "code": Question.code,
     }[q.order_by.value]
+    # 预加载全部出参所需关系：跨区库下漏一个就会触发每题一次的懒加载 N+1
+    # （全量 611 题 = 611 次跨洋往返 ≈ 21s，分页 20 题也要多 20 次）。
     stmt = _apply_filters(
-        select(Question).options(selectinload(Question.tags), selectinload(Question.stat)), q, db
+        select(Question).options(
+            selectinload(Question.category), selectinload(Question.tags), selectinload(Question.stat)
+        ),
+        q,
+        db,
     )
     stmt = stmt.order_by(order_col.desc() if q.desc else order_col.asc())
     items = list(db.scalars(stmt.offset(offset).limit(limit)).unique())
@@ -69,7 +76,15 @@ def list_questions(
 
 
 def get_question(db: Session, question_id: int) -> Question:
-    q = db.get(Question, question_id)
+    # joinedload 把出参所需的 category/tags/stat 全并进一条 SQL（跨区库 1 次往返），
+    # 替代 db.get + 3 次懒加载（4 次往返）。
+    q = db.scalars(
+        select(Question)
+        .options(
+            joinedload(Question.category), joinedload(Question.stat), selectinload(Question.tags)
+        )
+        .where(Question.id == question_id)
+    ).unique().first()
     if q is None:
         raise NotFoundError(f"题目 {question_id} 不存在")
     return q
@@ -94,6 +109,7 @@ def _sync_tags(db: Session, question: Question, names: list[str] | None) -> None
     question.tags = tags
 
 
+@invalidates_cache
 def create_question(db: Session, data: QuestionCreate) -> Question:
     if data.category_id is not None and db.get(Category, data.category_id) is None:
         raise NotFoundError(f"分类 {data.category_id} 不存在")
@@ -121,6 +137,7 @@ def create_question(db: Session, data: QuestionCreate) -> Question:
     return question
 
 
+@invalidates_cache
 def update_question(db: Session, question_id: int, data: QuestionUpdate) -> Question:
     question = get_question(db, question_id)
 
@@ -147,18 +164,21 @@ def update_question(db: Session, question_id: int, data: QuestionUpdate) -> Ques
     return question
 
 
+@invalidates_cache
 def soft_delete_question(db: Session, question_id: int) -> None:
     question = get_question(db, question_id)
     question.status = QuestionStatus.archived.value
     db.commit()
 
 
+@invalidates_cache
 def hard_delete_question(db: Session, question_id: int) -> None:
     question = get_question(db, question_id)
     db.delete(question)
     db.commit()
 
 
+@invalidates_cache
 def batch_update(db: Session, req: BatchRequest) -> int:
     """批量操作返回受影响行数。"""
     if req.action == BatchAction.delete:
@@ -225,6 +245,7 @@ def list_categories(db: Session) -> list[Category]:
     return list(db.scalars(select(Category).order_by(Category.sort_order, Category.id)))
 
 
+@invalidates_cache
 def create_category(db: Session, **data: Any) -> Category:
     parent_id = data.get("parent_id")
     if parent_id is not None and db.get(Category, parent_id) is None:
@@ -236,6 +257,7 @@ def create_category(db: Session, **data: Any) -> Category:
     return category
 
 
+@invalidates_cache
 def update_category(db: Session, category_id: int, **data: Any) -> Category:
     category = db.get(Category, category_id)
     if category is None:
@@ -253,6 +275,7 @@ def update_category(db: Session, category_id: int, **data: Any) -> Category:
     return category
 
 
+@invalidates_cache
 def delete_category(db: Session, category_id: int) -> None:
     """删除分类：子分类提升一级，题目 category_id 置空。"""
     category = db.get(Category, category_id)
@@ -293,6 +316,7 @@ def get_or_create_tag(db: Session, name: str, color: str | None = None) -> Tag:
     return tag
 
 
+@invalidates_cache
 def create_tag(db: Session, **data: Any) -> Tag:
     if db.scalar(select(Tag).where(Tag.name == data["name"])) is not None:
         raise ConflictError(f"标签 {data['name']} 已存在")
@@ -303,6 +327,7 @@ def create_tag(db: Session, **data: Any) -> Tag:
     return tag
 
 
+@invalidates_cache
 def update_tag(db: Session, tag_id: int, **data: Any) -> Tag:
     tag = db.get(Tag, tag_id)
     if tag is None:
@@ -319,6 +344,7 @@ def update_tag(db: Session, tag_id: int, **data: Any) -> Tag:
     return tag
 
 
+@invalidates_cache
 def delete_tag(db: Session, tag_id: int) -> None:
     tag = db.get(Tag, tag_id)
     if tag is None:

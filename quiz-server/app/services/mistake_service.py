@@ -5,6 +5,7 @@ from __future__ import annotations
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.core.cache import invalidates_cache
 from app.models.mistake import Mistake
 from app.models.question import Question
 from app.schemas.mistake import MistakeListQuery, MistakeUpdate
@@ -47,6 +48,7 @@ def list_mistakes(db: Session, q: MistakeListQuery, page=1, page_size=50):
     return list(rows), total
 
 
+@invalidates_cache
 def update_mistake(db: Session, question_id: int, data: MistakeUpdate) -> Mistake | None:
     m = db.scalar(select(Mistake).where(Mistake.question_id == question_id))
     if m is None:

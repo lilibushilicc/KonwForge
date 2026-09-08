@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 
+from app.core import cache
 from app.core.deps import DbSession
 from app.schemas.category import CategoryCreate, CategoryOut, CategoryUpdate
 from app.schemas.common import OkResponse
@@ -9,6 +10,7 @@ router = APIRouter(prefix="/categories", tags=["categories"])
 
 
 @router.get("", response_model=list[CategoryOut], summary="分类树（扁平，含 parent_id）")
+@cache.cached("categories")
 def list_categories(db: DbSession):
     return question_service.list_categories(db)
 

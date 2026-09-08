@@ -50,6 +50,9 @@ deps_mod.SessionLocal = SessionLocal
 @pytest.fixture(autouse=True)
 def _fresh_schema():
     """每个用例重建表（内存库，微秒级），保证互不干扰。"""
+    from app.core import cache
+
+    cache.invalidate_all()  # 缓存是进程级的，表都重建了缓存必须同步清掉
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     yield

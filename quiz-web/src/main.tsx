@@ -7,7 +7,7 @@ import "./styles/global.css";
 
 const queryClient = new QueryClient({
   defaultOptions: {
-    queries: { retry: 1, refetchOnWindowFocus: false, staleTime: 10_000 },
+    queries: { retry: 1, refetchOnWindowFocus: false, staleTime: 30_000 },
     mutations: { retry: 0 },
   },
 });

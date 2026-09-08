@@ -8,7 +8,7 @@ import csv as csv_module
 from io import StringIO
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.core.cache import invalidates_cache
 from app.core.exceptions import ConflictError
@@ -40,9 +40,11 @@ def export_json(db: Session) -> dict:
     items = list(
         db.scalars(
             select(Question)
+            .options(selectinload(Question.category), selectinload(Question.tags))
             .where(Question.status == QuestionStatus.active.value)
             .order_by(Question.created_at)
         )
+        .unique()
     )
     from datetime import datetime
 
@@ -74,9 +76,11 @@ def export_csv(db: Session) -> str:
     items = list(
         db.scalars(
             select(Question)
+            .options(selectinload(Question.category), selectinload(Question.tags))
             .where(Question.status == QuestionStatus.active.value)
             .order_by(Question.created_at)
         )
+        .unique()
     )
     cols = [
         "code",

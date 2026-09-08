@@ -228,7 +228,15 @@ def batch_update(db: Session, req: BatchRequest) -> int:
 
 
 def collect_category_ids(db: Session, root_id: int) -> list[int]:
-    """取某分类及其全部子孙 id（题库筛选「含子分类」）。"""
+    """取某分类及其全部子孙 id（题库筛选「含子分类」）。
+
+    一次拉全部分类在内存展开（分类总数少），替代逐层下探查询——
+    跨区库下每层一次往返，树深 2-3 层就是 2-3 次 RTT。
+    """
+    rows = db.execute(select(Category.id, Category.parent_id)).all()
+    children: dict[int | None, list[int]] = {}
+    for cid, pid in rows:
+        children.setdefault(pid, []).append(cid)
     ids: list[int] = []
     stack = [root_id]
     while stack:
@@ -236,8 +244,7 @@ def collect_category_ids(db: Session, root_id: int) -> list[int]:
         if cur in ids:
             continue
         ids.append(cur)
-        children = db.scalars(select(Category.id).where(Category.parent_id == cur)).all()
-        stack.extend(children)
+        stack.extend(children.get(cur, []))
     return ids
 
 

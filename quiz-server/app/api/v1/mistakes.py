@@ -7,6 +7,8 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Query, status
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 
 from app.core.deps import DbSession, Paging
 from app.models.mistake import Mistake
@@ -67,9 +69,24 @@ def list_(
         only_wrong=only_wrong,
     )
     rows, _ = mistake_service.list_mistakes(db, query, page=paging.page, page_size=paging.limit)
+    # 批量预取题目（含 category/tags），替代逐题 db.get + 懒加载
+    # （每页 50 题原是 150 次往返：50 get + 50 category + 50 tags）
+    qids = {m.question_id for m in rows}
+    qmap: dict[int, Question] = {}
+    if qids:
+        qmap = {
+            q.id: q
+            for q in db.scalars(
+                select(Question)
+                .options(selectinload(Question.category), selectinload(Question.tags))
+                .where(Question.id.in_(qids))
+            )
+            .unique()
+            .all()
+        }
     out = []
     for m in rows:
-        q = db.get(Question, m.question_id)
+        q = qmap.get(m.question_id)
         if q is None:
             continue
         out.append(_to_out(m, q))

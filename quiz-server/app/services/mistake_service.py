@@ -30,9 +30,16 @@ def list_mistakes(db: Session, q: MistakeListQuery, page=1, page_size=50):
         stmt.order_by(Mistake.last_wrong_at.desc()).offset((page - 1) * page_size).limit(page_size)
     ).all()
     if q.keyword or q.types or q.category_id is not None:
+        # 批量预取本页题目再内存过滤，替代逐题 db.get（跨区库下每题一次往返）
+        qids = {m.question_id for m in rows}
+        qn_map = {}
+        if qids:
+            qn_map = {
+                qn.id: qn for qn in db.scalars(select(Question).where(Question.id.in_(qids))).all()
+            }
         filtered = []
         for m in rows:
-            qn = db.get(Question, m.question_id)
+            qn = qn_map.get(m.question_id)
             if qn is None:
                 continue
             if q.keyword and q.keyword not in (qn.stem or ""):

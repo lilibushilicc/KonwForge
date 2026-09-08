@@ -12,17 +12,35 @@ if [ "$(id -u)" -ne 0 ]; then
   exit 1
 fi
 
-echo "==> [1/7] 安装系统依赖 (python3.12, venv, nginx)"
-if ! command -v python3.12 >/dev/null 2>&1; then
-  apt-get update
-  apt-get install -y python3.12 python3.12-venv python3.12-dev python3-pip nginx git curl
+echo "==> [1/7] 安装系统依赖"
+# 发行版差异：Debian/Ubuntu 走 apt；Alibaba Cloud Linux / RHEL 系走 dnf，
+# 且 Python 不用系统包（系统 python 往往是 3.6），统一交给 uv 管理。
+if command -v apt-get >/dev/null 2>&1; then
+  if ! command -v python3.12 >/dev/null 2>&1; then
+    apt-get update
+    apt-get install -y python3.12 python3.12-venv python3.12-dev python3-pip nginx git curl
+  fi
+  command -v nginx >/dev/null 2>&1 || { apt-get update; apt-get install -y nginx; }
+elif command -v dnf >/dev/null 2>&1; then
+  command -v nginx >/dev/null 2>&1 || dnf install -y nginx
+else
+  echo "!! 未识别的包管理器（无 apt-get/dnf），请自行确保 nginx 与 Python 3.12 可用"
 fi
-command -v nginx >/dev/null 2>&1 || { apt-get update; apt-get install -y nginx; }
 
-echo "==> [2/7] 创建虚拟环境并安装后端依赖"
-python3.12 -m venv "$VENV"
-"$VENV/bin/pip" install --upgrade pip
-"$VENV/bin/pip" install -r "$SRV/requirements.txt"
+echo "==> [2/7] 创建虚拟环境并安装后端依赖（uv 优先）"
+if [ ! -x "$VENV/bin/python" ]; then
+  if command -v uv >/dev/null 2>&1; then
+    uv venv "$VENV" --python 3.12
+  else
+    python3.12 -m venv "$VENV"
+  fi
+fi
+if command -v uv >/dev/null 2>&1; then
+  uv pip install --python "$VENV/bin/python" -r "$SRV/requirements.txt"
+else
+  "$VENV/bin/pip" install --upgrade pip
+  "$VENV/bin/pip" install -r "$SRV/requirements.txt"
+fi
 
 echo "==> [3/7] 准备 .env"
 if [ ! -f "$SRV/.env" ]; then

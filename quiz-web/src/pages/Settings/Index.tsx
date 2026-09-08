@@ -10,31 +10,59 @@ import {
   Input,
   Modal,
   Popconfirm,
+  Radio,
   Row,
+  Skeleton,
   Space,
+  Switch,
   Table,
   Tag as AntTag,
   Tooltip,
   Tree,
+  Typography,
 } from "antd";
 import type { DataNode } from "antd/es/tree";
 import {
   ArrowDownOutlined,
   ArrowUpOutlined,
+  BgColorsOutlined,
+  CloudDownloadOutlined,
   DeleteOutlined,
+  DownloadOutlined,
   EditOutlined,
   PlusOutlined,
+  RocketOutlined,
+  SlidersOutlined,
 } from "@ant-design/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 
 import { PageHeader } from "../../components/common/PageHeader";
 import { categoriesApi, tagsApi } from "../../api/categories";
 import type { Category, Tag } from "../../api/categories";
+import { questionsApi } from "../../api/questions";
+import { http } from "../../api/client";
+import { useUiStore } from "../../stores/uiStore";
+import { useSettingsStore } from "../../stores/settingsStore";
 
 export default function Settings() {
   return (
     <>
-      <PageHeader title="题库设置" sub="分类与标签的集中管理" />
+      <PageHeader title="题库设置" sub="通用偏好、分类与标签的集中管理" />
+      <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
+        <Col xs={24} md={12} xl={8}>
+          <AppearancePanel />
+        </Col>
+        <Col xs={24} md={12} xl={8}>
+          <JudgePrefPanel />
+        </Col>
+        <Col xs={24} md={12} xl={8}>
+          <SandboxPanel />
+        </Col>
+        <Col xs={24} md={12} xl={8}>
+          <BackupPanel />
+        </Col>
+      </Row>
       <Row gutter={[16, 16]}>
         <Col xs={24} lg={12}>
           <CategoryPanel />
@@ -44,6 +72,189 @@ export default function Settings() {
         </Col>
       </Row>
     </>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* 通用设置：外观 / 判分偏好 / 沙箱 / 数据备份                                  */
+/* -------------------------------------------------------------------------- */
+
+function AppearancePanel() {
+  const theme = useUiStore((s) => s.theme);
+  const setTheme = useUiStore((s) => s.setTheme);
+  return (
+    <Card
+      size="small"
+      title={
+        <>
+          <BgColorsOutlined /> 外观
+        </>
+      }
+    >
+      <Space direction="vertical" size={8} style={{ width: "100%" }}>
+        <Typography.Text type="secondary">界面主题（即时生效，保存在本机）</Typography.Text>
+        <Radio.Group
+          value={theme}
+          onChange={(e: any) => setTheme(e.target.value)}
+          optionType="button"
+          buttonStyle="solid"
+          options={[
+            { label: "浅色", value: "light" },
+            { label: "深色", value: "dark" },
+          ]}
+        />
+      </Space>
+    </Card>
+  );
+}
+
+function JudgePrefPanel() {
+  const prefs = useSettingsStore((s) => s.prefs);
+  const setPrefs = useSettingsStore((s) => s.setPrefs);
+  const resetPrefs = useSettingsStore((s) => s.resetPrefs);
+  const rows: { label: string; checked: boolean; onChange: (v: boolean) => void }[] = [
+    {
+      label: "填空题允许乱序匹配",
+      checked: prefs.fill_blank_ordered,
+      onChange: (v) => setPrefs({ fill_blank_ordered: v }),
+    },
+    {
+      label: "多选题部分给分",
+      checked: prefs.mc_partial_credit,
+      onChange: (v) => setPrefs({ mc_partial_credit: v }),
+    },
+    {
+      label: "多选题允许多选超出",
+      checked: prefs.mc_allow_extra,
+      onChange: (v) => setPrefs({ mc_allow_extra: v }),
+    },
+  ];
+  return (
+    <Card
+      size="small"
+      title={
+        <>
+          <SlidersOutlined /> 判分偏好
+        </>
+      }
+    >
+      <Space direction="vertical" size={10} style={{ width: "100%" }}>
+        <Typography.Text type="secondary">
+          作为「新建题目」时的默认判分配置（不影响已有题目）
+        </Typography.Text>
+        {rows.map((r) => (
+          <div key={r.label} style={{ display: "flex", justifyContent: "space-between" }}>
+            <Typography.Text>{r.label}</Typography.Text>
+            <Switch size="small" checked={r.checked} onChange={r.onChange} />
+          </div>
+        ))}
+        <Button size="small" type="link" style={{ padding: 0 }} onClick={resetPrefs}>
+          恢复默认
+        </Button>
+      </Space>
+    </Card>
+  );
+}
+
+function SandboxPanel() {
+  const { data, isLoading } = useQuery({
+    queryKey: ["settings"],
+    queryFn: () => http.get<any>("/settings"),
+    staleTime: 60_000,
+  });
+  return (
+    <Card
+      size="small"
+      title={
+        <>
+          <RocketOutlined /> 代码题沙箱
+        </>
+      }
+    >
+      {isLoading ? (
+        <Skeleton active paragraph={{ rows: 2 }} title={false} />
+      ) : (
+        <Space direction="vertical" size={8} style={{ width: "100%" }}>
+          <div style={{ display: "flex", justifyContent: "space-between" }}>
+            <Typography.Text>沙箱启用</Typography.Text>
+            <AntTag color={data?.sandbox_enabled ? "success" : "default"}>
+              {data?.sandbox_enabled ? "已启用" : "未启用"}
+            </AntTag>
+          </div>
+          {data?.sandbox_enabled && (
+            <>
+              <Typography.Text style={{ fontSize: 13 }}>
+                镜像：{data.sandbox_image}
+              </Typography.Text>
+              <Typography.Text style={{ fontSize: 13 }}>
+                超时 {data.sandbox_timeout_ms}ms · 内存 {data.sandbox_memory_mb}MB
+              </Typography.Text>
+            </>
+          )}
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            沙箱开关由部署环境 .env 的 SANDBOX_ENABLED 控制（此处只读展示）。未启用时，
+            代码题由你对照参考实现自评，不计分。
+          </Typography.Text>
+        </Space>
+      )}
+    </Card>
+  );
+}
+
+function download(filename: string, content: string, mime: string) {
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function BackupPanel() {
+  const navigate = useNavigate();
+  const { message } = App.useApp();
+  const exportJsonMut = useMutation({
+    mutationFn: () => questionsApi.exportJsonData(),
+    onSuccess: (data) => {
+      download("questions.json", JSON.stringify(data, null, 2), "application/json");
+      message.success(`已导出 ${(data as any[]).length} 题`);
+    },
+    onError: (e: any) => message.error(e?.message ?? "导出失败"),
+  });
+  const csvUrl = questionsApi.exportUrl("csv");
+  return (
+    <Card
+      size="small"
+      title={
+        <>
+          <CloudDownloadOutlined /> 数据备份
+        </>
+      }
+    >
+      <Space direction="vertical" size={10} style={{ width: "100%" }}>
+        <Typography.Text type="secondary">
+          导出全部题目为 JSON / CSV，随时可批量导回
+        </Typography.Text>
+        <Space wrap>
+          <Button
+            size="small"
+            type="primary"
+            icon={<DownloadOutlined />}
+            loading={exportJsonMut.isPending}
+            onClick={() => exportJsonMut.mutate()}
+          >
+            导出 JSON
+          </Button>
+          <Button size="small" icon={<DownloadOutlined />} onClick={() => window.open(csvUrl, "_blank")}>
+            导出 CSV
+          </Button>
+          <Button size="small" onClick={() => navigate("/bank/import")}>
+            批量导入
+          </Button>
+        </Space>
+      </Space>
+    </Card>
   );
 }
 

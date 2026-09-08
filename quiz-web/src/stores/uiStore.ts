@@ -5,6 +5,7 @@ export type ThemeMode = "light" | "dark";
 
 interface UiState {
   theme: ThemeMode;
+  setTheme: (t: ThemeMode) => void;
   toggleTheme: () => void;
 }
 
@@ -13,6 +14,7 @@ export const useUiStore = create<UiState>()(
   persist(
     (set) => ({
       theme: "light",
+      setTheme: (t) => set({ theme: t }),
       toggleTheme: () => set((s) => ({ theme: s.theme === "light" ? "dark" : "light" })),
     }),
     { name: "quiz-ui" },

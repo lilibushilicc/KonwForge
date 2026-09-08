@@ -29,6 +29,7 @@ import {
   type SessionSubmitResult,
 } from "../../api/practice";
 import { TYPE_LABELS } from "../../stores/bankStore";
+import { usePracticeStore, type AnswerDraft } from "../../stores/practiceStore";
 
 /** 判断某题是否已作答（用于进度与答题卡状态）。 */
 function isAnswered(type: string, response?: Record<string, any>): boolean {
@@ -71,11 +72,13 @@ export function ExamPlayer({ session }: { session: PracticeSession }) {
   const qc = useQueryClient();
   const isMobile = useIsMobile();
 
+  const { draft, patchDraft, clear } = usePracticeStore();
+
   const [cur, setCur] = useState<PracticeSession>(session);
-  const [responses, setResponses] = useState<
-    Record<number, { response: any; self_eval?: string }>
-  >({});
-  const [flagged, setFlagged] = useState<Record<number, boolean>>({});
+  // 草稿与当前 session 对应才使用（刷新/续答时从 localStorage 恢复）
+  const local = draft?.session.id === session.id ? draft : null;
+  const responses = local?.responses ?? {};
+  const flagged = local?.flagged ?? {};
   const [review, setReview] = useState(false);
   const [summary, setSummary] = useState<SessionSubmitResult | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -118,6 +121,7 @@ export function ExamPlayer({ session }: { session: PracticeSession }) {
       setSummary(res);
       setReview(true);
       setSheetOpen(false);
+      clear(); // 会话已交卷，清除本地草稿
       qc.invalidateQueries({ queryKey: ["stats"] });
     },
     onError: () => message.error("交卷失败，请重试"),
@@ -142,8 +146,11 @@ export function ExamPlayer({ session }: { session: PracticeSession }) {
     if (item) refs.current[item.id]?.scrollIntoView({ behavior: "smooth", block: "start" });
     setSheetOpen(false);
   };
-  const toggleFlag = (itemId: number) =>
-    setFlagged((p) => ({ ...p, [itemId]: !p[itemId] }));
+  const toggleFlag = (itemId: number) => {
+    const curDraft = usePracticeStore.getState().draft;
+    const base = curDraft?.session.id === session.id ? curDraft.flagged : flagged;
+    patchDraft({ flagged: { ...base, [itemId]: !base[itemId] } });
+  };
 
   if (total === 0) {
     return (
@@ -233,21 +240,30 @@ export function ExamPlayer({ session }: { session: PracticeSession }) {
                   <QuestionPlayer
                     question={item.question}
                     disabled={review}
-                    onChange={(r) =>
-                      setResponses((p) => ({ ...p, [item.id]: { ...p[item.id], response: r } }))
-                    }
+                    onChange={(r) => {
+                      const curDraft = usePracticeStore.getState().draft;
+                      const base =
+                        curDraft?.session.id === session.id ? curDraft.responses : responses;
+                      const prev: AnswerDraft = base[item.id] ?? {};
+                      patchDraft({
+                        responses: { ...base, [item.id]: { ...prev, response: r } },
+                      });
+                    }}
                   />
 
                   {!review && item.question.type === "essay" && (
                     <div style={{ marginTop: 12 }}>
                       <EssaySelfEval
                         value={responses[item.id]?.self_eval}
-                        onChange={(v) =>
-                          setResponses((p) => ({
-                            ...p,
-                            [item.id]: { ...p[item.id], self_eval: v },
-                          }))
-                        }
+                        onChange={(v) => {
+                          const curDraft = usePracticeStore.getState().draft;
+                          const base =
+                            curDraft?.session.id === session.id ? curDraft.responses : responses;
+                          const prev: AnswerDraft = base[item.id] ?? {};
+                          patchDraft({
+                            responses: { ...base, [item.id]: { ...prev, self_eval: v } },
+                          });
+                        }}
                       />
                     </div>
                   )}

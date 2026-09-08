@@ -25,6 +25,12 @@ import { PageHeader } from "../../components/common/PageHeader";
 import { QuestionPlayer, EssaySelfEval } from "../../components/practice/QuestionPlayer";
 import { AnswerReveal } from "../../components/practice/AnswerReveal";
 import { ExamPlayer } from "../../components/practice/ExamPlayer";
+import {
+  usePracticeStore,
+  hasResumableDraft,
+  type AnswerDraft,
+  type PracticeDraft,
+} from "../../stores/practiceStore";
 import { http } from "../../api/client";
 import { practiceApi, type PracticeSession, type PracticeSessionCreate } from "../../api/practice";
 import { categoriesApi } from "../../api/categories";
@@ -183,29 +189,79 @@ function SetupCard({
   );
 }
 
+/** 判断某题是否已有实质作答内容（与 ExamPlayer 一致）。 */
+function isAnswered(type: string, response?: Record<string, any>): boolean {
+  if (!response) return false;
+  switch (type) {
+    case "single_choice":
+      return !!response.choice;
+    case "multiple_choice":
+      return Array.isArray(response.choices) && response.choices.length > 0;
+    case "fill_blank": {
+      const b = response.blanks || {};
+      return Object.values(b).some((v) => typeof v === "string" && v.trim() !== "");
+    }
+    case "coding":
+      return typeof response.code === "string" && response.code.trim() !== "";
+    case "essay":
+      return typeof response.text === "string" && response.text.trim() !== "";
+    default:
+      return false;
+  }
+}
+
 function Player({ session }: { session: PracticeSession }) {
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const { draft, patchDraft, clear } = usePracticeStore();
+
   const items = session.items;
-  const [idx, setIdx] = useState(0);
-  const [response, setResponse] = useState<Record<string, any>>({});
-  const [selfEval, setSelfEval] = useState<string>();
-  const [result, setResult] = useState<any>(null);
+  // 草稿与当前 session 对应才使用；否则用空壳（新会话干净初始态）
+  const local = draft?.session.id === session.id ? draft : null;
+  const responses = local?.responses ?? {};
+  const idx = local?.idx ?? 0;
   const [summary, setSummary] = useState<any>(null);
 
-  const item = items[idx];
   const total = items.length;
-  const answered = items.filter((i) => i.answered).length;
+  const item = items[idx];
+  const cur: AnswerDraft = responses[item?.id] ?? {};
+  const response = cur.response ?? {};
+  const selfEval = cur.self_eval;
+  const result = cur.result;
+
+  // 进度：后端已提交 + 草稿中已有实质内容的题
+  const answered = items.filter((i) => {
+    if (i.answered) return true;
+    const d = responses[i.id];
+    return d ? isAnswered(i.question.type, d.response) : false;
+  }).length;
+
+  const setItemDraft = (patch: Partial<AnswerDraft>) => {
+    // 用 store 最新草稿作基础，避免快速连续输入时用旧快照覆盖
+    const curDraft = usePracticeStore.getState().draft;
+    const base = curDraft?.session.id === session.id ? curDraft.responses : responses;
+    const prev: AnswerDraft = base[item.id] ?? {};
+    patchDraft({ responses: { ...base, [item.id]: { ...prev, ...patch } } });
+  };
+  const goto = (next: number) => patchDraft({ idx: Math.max(0, Math.min(total - 1, next)) });
 
   const answerMut = useMutation({
     mutationFn: () =>
-      practiceApi.answer(session.id, { item_id: item.id, response, self_eval: selfEval as any }),
-    onSuccess: (r) => setResult(r),
+      practiceApi.answer(session.id, {
+        item_id: item.id,
+        response,
+        self_eval: (selfEval ?? null) as any,
+      }),
+    onSuccess: (r) => {
+      setItemDraft({ result: r });
+      qc.invalidateQueries({ queryKey: ["stats"] });
+    },
     onError: () => message.error("作答失败"),
   });
   const submitMut = useMutation({
     mutationFn: () => practiceApi.submit(session.id),
     onSuccess: (s) => {
+      clear();
       setSummary(s);
       qc.invalidateQueries({ queryKey: ["stats"] });
     },
@@ -238,7 +294,11 @@ function Player({ session }: { session: PracticeSession }) {
       </Typography.Text>
 
       <Card style={{ marginTop: 12, minHeight: 280 }}>
-        <QuestionPlayer question={item.question} disabled={!!result} onChange={setResponse} />
+        <QuestionPlayer
+          question={item.question}
+          disabled={!!result}
+          onChange={(r) => setItemDraft({ response: r })}
+        />
 
         {result && (
           <Alert
@@ -270,20 +330,16 @@ function Player({ session }: { session: PracticeSession }) {
 
         {!result && item.question.type === "essay" && (
           <div style={{ marginTop: 12 }}>
-            <EssaySelfEval value={selfEval} onChange={setSelfEval} />
+            <EssaySelfEval
+              value={selfEval}
+              onChange={(v) => setItemDraft({ self_eval: v })}
+            />
           </div>
         )}
       </Card>
 
       <div style={{ marginTop: 16, display: "flex", justifyContent: "space-between" }}>
-        <Button
-          disabled={idx === 0}
-          onClick={() => {
-            setIdx(idx - 1);
-            setResult(null);
-            setResponse({});
-          }}
-        >
+        <Button disabled={idx === 0} onClick={() => goto(idx - 1)}>
           上一题
         </Button>
         {!result ? (
@@ -296,15 +352,7 @@ function Player({ session }: { session: PracticeSession }) {
             提交本题
           </Button>
         ) : idx < total - 1 ? (
-          <Button
-            type="primary"
-            onClick={() => {
-              setIdx(idx + 1);
-              setResult(null);
-              setResponse({});
-              setSelfEval(undefined);
-            }}
-          >
+          <Button type="primary" onClick={() => goto(idx + 1)}>
             下一题
           </Button>
         ) : (
@@ -317,8 +365,45 @@ function Player({ session }: { session: PracticeSession }) {
   );
 }
 
+function ResumeCard({
+  draft,
+  onResume,
+  onDiscard,
+}: {
+  draft: PracticeDraft;
+  onResume: () => void;
+  onDiscard: () => void;
+}) {
+  const modeLabel =
+    draft.session.mode === "exam" ? "整卷考试" : draft.session.mode === "category" ? "分类练习" : "顺序练习";
+  const answeredCount = draft.session.items.filter((i) => {
+    if (i.answered) return true;
+    const d = draft.responses[i.id];
+    return d ? isAnswered(i.question.type, d.response) : false;
+  }).length;
+  return (
+    <Card style={{ maxWidth: 520, margin: "40px auto", textAlign: "center" }}>
+      <Typography.Title level={4}>继续上次的练习？</Typography.Title>
+      <Typography.Paragraph type="secondary">
+        {draft.session.code} · {modeLabel} · 已答 {answeredCount} / {draft.session.total_count} 题
+        <br />
+        {draft.updatedAt
+          ? `上次操作：${new Date(draft.updatedAt).toLocaleString()}`
+          : ""}
+      </Typography.Paragraph>
+      <Space>
+        <Button type="primary" icon={<PlayCircleOutlined />} onClick={onResume}>
+          继续上次
+        </Button>
+        <Button onClick={onDiscard}>放弃并新建</Button>
+      </Space>
+    </Card>
+  );
+}
+
 export default function Practice() {
   const [params] = useSearchParams();
+  const { draft, setDraft, clear } = usePracticeStore();
   const [session, setSession] = useState<PracticeSession | null>(null);
 
   // 进入练习页即静默预热后端：把冷启动等待从「点按钮」提前到「进页面」。
@@ -330,7 +415,16 @@ export default function Practice() {
 
   const createMut = useMutation({
     mutationFn: (cfg: PracticeSessionCreate) => practiceApi.create(cfg),
-    onSuccess: setSession,
+    onSuccess: (s) => {
+      setDraft({
+        session: s,
+        responses: {},
+        idx: 0,
+        flagged: {},
+        updatedAt: Date.now(),
+      });
+      setSession(s);
+    },
     onError: () => message.error("创建会话失败，可能后端正在启动，请稍后重试"),
     // Render 免费实例冷启动会返回 502/网络错误，自动重试一次通常即可连上已唤醒的实例
     retry: (failureCount, err: any) =>
@@ -353,6 +447,9 @@ export default function Practice() {
     );
   }
 
+  // 有可续答草稿且当前没有进行中的会话 → 显示续答入口
+  const resumable = !session && !mistakeMode && hasResumableDraft() && !!draft;
+
   return (
     <Wrap>
       {session ? (
@@ -361,6 +458,17 @@ export default function Practice() {
         ) : (
           <Player session={session} />
         )
+      ) : resumable ? (
+        <ResumeCard
+          draft={draft!}
+          onResume={() => {
+            setDraft({ ...draft!, updatedAt: Date.now() });
+            setSession(draft!.session);
+          }}
+          onDiscard={() => {
+            clear();
+          }}
+        />
       ) : (
         <SetupCard onStart={startCreate} creating={createMut.isPending} />
       )}

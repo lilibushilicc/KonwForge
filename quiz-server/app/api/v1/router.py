@@ -7,6 +7,7 @@ from app.api.v1 import (
     mistakes,
     practice,
     questions,
+    settings,
     stats,
     tags,
 )
@@ -22,3 +23,4 @@ router.include_router(judge.router)
 router.include_router(practice.router)
 router.include_router(mistakes.router)
 router.include_router(stats.router)
+router.include_router(settings.router)

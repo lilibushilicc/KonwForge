@@ -22,6 +22,7 @@ import { questionsApi } from "../../api/questions";
 import { categoriesApi, tagsApi } from "../../api/categories";
 import { getTypeMeta, QUESTION_TYPES } from "../../components/question/registry";
 import { TYPE_LABELS } from "../../stores/bankStore";
+import { useSettingsStore, judgeConfigForType } from "../../stores/settingsStore";
 import { buildCategoryTree } from "../../utils/category";
 import type { QuestionDraft, QuestionType } from "../../types/question";
 
@@ -50,6 +51,8 @@ export default function QuestionEditor() {
   const navigate = useNavigate();
   const { message } = App.useApp();
   const qc = useQueryClient();
+  // 判分偏好（设置页可配）：新建题目时合并进 judge_config，作为该题默认判分参数
+  const prefs = useSettingsStore((s) => s.prefs);
 
   const { data: existing, isLoading } = useQuery({
     queryKey: ["question", id],
@@ -160,7 +163,7 @@ export default function QuestionEditor() {
         tags: s.tags,
         payload: s.payload,
         answer: s.answer,
-        judge_config: {},
+        judge_config: editing ? {} : judgeConfigForType(s.type, prefs),
         source: s.source.trim() || null,
       };
       if (editing) return questionsApi.update(Number(id), draft);

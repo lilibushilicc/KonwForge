@@ -473,11 +473,18 @@ def to_import_records(items: list[Item], warnings: list[str]) -> tuple[list[dict
         if real_type == "coding" and not payload.get("testcases"):
             judge_config["mode"] = "manual"
 
+        # 题干代码块并回 stem：此前 stem_code 只给 coding 当 template 用，
+        # 选择/判断/填空题的题干代码被整块丢弃，导致“以下代码的输出是？”没有代码。
+        # coding 题的代码在 payload.template 里已单独承载，不重复进 stem。
+        stem = rec["stem"]
+        if rec["stem_code"] and real_type != "coding":
+            stem = f'{stem}\n\n```python\n{rec["stem_code"]}\n```'
+
         out.append(
             {
                 "code": f"PY-{code_seq:04d}",
                 "type": real_type,
-                "stem": rec["stem"],
+                "stem": stem,
                 "analysis": rec["analysis"],
                 "difficulty": 3,
                 "category": rec["ch_title"],

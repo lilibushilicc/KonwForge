@@ -1,0 +1,18 @@
+[Unit]
+Description=KonwForge Quiz Backend (FastAPI)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/knowforge/quiz-server
+# 同域反代：nginx 在 80 口把 /api 转给这里；应用从 WorkingDirectory 的 .env 自动读配置
+ExecStart=/opt/knowforge/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8001 --workers 2
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=quiz-server
+
+[Install]
+WantedBy=multi-user.target

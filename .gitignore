@@ -6,3 +6,9 @@
 Thumbs.db
 .DS_Store
 desktop.ini
+
+# 本地真实密钥与构建产物，禁止入库
+deploy/.env.vps
+quiz-deploy.tar.gz
+quiz-server/tools/pybank_import/out/*.bak
+quiz-server/tools/pybank_import/out/import_fixed.json

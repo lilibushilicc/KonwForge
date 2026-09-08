@@ -4,6 +4,44 @@ import type { QuestionPlay } from "../../api/practice";
 
 const { TextArea } = Input;
 
+/**
+ * 题干渲染：``` 围栏内的代码块切出来渲染成 <pre.code-block>（主题走 CSS 变量），
+ * 其余按段落文本。代码题库的 stem 形如「题干文字\n\n```python\n...\n```」。
+ */
+function StemContent({ stem }: { stem: string }) {
+  const segments: { kind: "text" | "code"; body: string }[] = [];
+  const re = /```(\w*)\n?([\s\S]*?)```/g;
+  let last = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(stem))) {
+    if (m.index > last) segments.push({ kind: "text", body: stem.slice(last, m.index) });
+    segments.push({ kind: "code", body: m[2].replace(/\n$/, "") });
+    last = m.index + m[0].length;
+  }
+  if (last < stem.length) segments.push({ kind: "text", body: stem.slice(last) });
+  if (segments.length === 0) segments.push({ kind: "text", body: stem });
+
+  return (
+    <>
+      {segments.map((s, i) =>
+        s.kind === "code" ? (
+          <pre key={i} className="code-block" style={{ whiteSpace: "pre-wrap", margin: "8px 0" }}>
+            {s.body}
+          </pre>
+        ) : (
+          <Typography.Paragraph
+            key={i}
+            strong
+            style={{ whiteSpace: "pre-wrap", marginBottom: 0 }}
+          >
+            {s.body.trim()}
+          </Typography.Paragraph>
+        ),
+      )}
+    </>
+  );
+}
+
 /** 题干里的 ____ 占位替换成受控输入框（按出现顺序编号）。 */
 function FillStem({
   stem,
@@ -67,7 +105,7 @@ export function QuestionPlayer({
     const options = payload?.options ?? [];
     return (
       <>
-        <Typography.Paragraph strong>{stem}</Typography.Paragraph>
+        <StemContent stem={stem} />
         <Radio.Group
           disabled={disabled}
           value={choice}
@@ -92,7 +130,7 @@ export function QuestionPlayer({
     const options = payload?.options ?? [];
     return (
       <>
-        <Typography.Paragraph strong>{stem}</Typography.Paragraph>
+        <StemContent stem={stem} />
         <Checkbox.Group
           disabled={disabled}
           value={choices}
@@ -135,7 +173,7 @@ export function QuestionPlayer({
     const template = payload?.template as string | undefined;
     return (
       <>
-        <Typography.Paragraph strong>{stem}</Typography.Paragraph>
+        <StemContent stem={stem} />
         {template && (
           <pre className="code-block" style={{ whiteSpace: "pre-wrap" }}>
             {template}
@@ -160,7 +198,7 @@ export function QuestionPlayer({
   // essay
   return (
     <>
-      <Typography.Paragraph strong>{stem}</Typography.Paragraph>
+      <StemContent stem={stem} />
       <TextArea
         disabled={disabled}
         rows={5}

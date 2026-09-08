@@ -42,36 +42,108 @@ function StemContent({ stem }: { stem: string }) {
   );
 }
 
-/** 题干里的 ____ 占位替换成受控输入框（按出现顺序编号）。 */
+/**
+ * 填空题题干渲染：把占位符替换成输入框。
+ *
+ * 【支持的占位符格式】
+ *   1. 新格式：{{1}}、{{2}}、{{3}} —— 带编号，与答案配置的空 id 一一对应，推荐使用
+ *   2. 旧格式：____ —— 四个下划线，按出现顺序自动编号（兼容已录入题目）
+ *
+ * 【修复要点】
+ *   - 以 payload.blanks 配置的空数为权威渲染依据，不再靠解析题干 ____ 数量决定空数
+ *   - 先把代码块整体替换成占位符再解析，避免代码里的 ____（如 __init__）被误识别
+ *   - {{id}} 优先按编号匹配答案配置；匹配不上时按顺序兜底；仍匹配不上显示红色警告
+ *   - 题干里多余的、未在答案配置中声明的占位符，显示为红色警告文本，不生成输入框
+ */
 function FillStem({
   stem,
+  blanks: blankSpecs,
   values,
   onChange,
 }: {
   stem: string;
+  blanks: any[];
   values: Record<number, string>;
   onChange: (id: number, v: string) => void;
 }) {
-  const parts = stem.split("____");
-  const blanks = parts.length - 1;
-  return (
-    <Typography.Paragraph>
-      {parts.map((p, i) => (
-        <span key={i}>
-          {p}
-          {i < blanks && (
-            <Input
-              size="small"
-              style={{ width: 120, display: "inline-block", margin: "0 4px" }}
-              value={values[i + 1] ?? ""}
-              onChange={(e) => onChange(i + 1, e.target.value)}
-              placeholder={`空${i + 1}`}
-            />
-          )}
-        </span>
-      ))}
-    </Typography.Paragraph>
-  );
+  const specs = Array.isArray(blankSpecs) ? blankSpecs : [];
+
+  // 第一步：把代码块整体替换成不可见占位符 \u0000idx\u0000，避免代码内容干扰解析
+  const codeBlocks: string[] = [];
+  const stemWithoutCode = stem.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) => {
+    codeBlocks.push(`\`\`\`${lang}\n${code}\`\`\``);
+    return `\u0000${codeBlocks.length - 1}\u0000`;
+  });
+
+  // 第二步：解析占位符。{{数字}} 直接取编号；____ 按出现顺序自动编号（从 1 开始）
+  const tokens: { id: number; raw: string }[] = [];
+  let autoSeq = 0;
+  const parts: string[] = [];
+  const tokenRe = /\{\{(\d+)\}\}|____/g;
+  let lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = tokenRe.exec(stemWithoutCode))) {
+    parts.push(stemWithoutCode.slice(lastIndex, m.index));
+    if (m[1] !== undefined) {
+      tokens.push({ id: Number(m[1]), raw: `{{${m[1]}}}` });
+    } else {
+      autoSeq++;
+      tokens.push({ id: autoSeq, raw: "____" });
+    }
+    lastIndex = m.index + m[0].length;
+  }
+  parts.push(stemWithoutCode.slice(lastIndex));
+
+  // 第三步：建立答案配置映射，准备渲染
+  const specById = new Map<number, any>();
+  specs.forEach((s) => {
+    if (s?.id != null) specById.set(Number(s.id), s);
+  });
+  const usedSpecs = new Set<any>(); // 记录已渲染的配置，避免顺序兜底时重复使用
+
+  const restoreCode = (text: string) =>
+    text.replace(/\u0000(\d+)\u0000/g, (_, idx) => codeBlocks[Number(idx)] ?? "");
+
+  // 组装渲染序列：文本0 → 占位符0 → 文本1 → 占位符1 → ...
+  const nodes: React.ReactNode[] = [];
+  for (let i = 0; i < parts.length; i++) {
+    if (parts[i]) nodes.push(<span key={`t${i}`}>{restoreCode(parts[i])}</span>);
+    if (i < tokens.length) {
+      const token = tokens[i];
+      // 优先按编号精确匹配答案配置
+      let spec = specById.get(token.id);
+      // 匹配不上：按顺序找第一个未被使用的配置兜底
+      if (!spec) spec = specs.find((s) => !usedSpecs.has(s)) ?? null;
+
+      if (!spec) {
+        // 该占位符未在答案配置中声明 → 红色警告，不生成输入框
+        nodes.push(
+          <span
+            key={`b${i}`}
+            style={{ color: "#ff4d4f", background: "#fff2f0", padding: "0 4px", borderRadius: 4 }}
+            title={`该占位符未在填空题答案中配置（当前配置了 ${specs.length} 个空）`}
+          >
+            {token.raw}
+          </span>,
+        );
+        continue;
+      }
+      usedSpecs.add(spec);
+      const inputId = Number(spec.id ?? token.id);
+      nodes.push(
+        <Input
+          key={`b${i}`}
+          size="small"
+          style={{ width: 120, display: "inline-block", margin: "0 4px" }}
+          value={values[inputId] ?? ""}
+          onChange={(e) => onChange(inputId, e.target.value)}
+          placeholder={spec.placeholder || spec.hint || `空${inputId}`}
+        />,
+      );
+    }
+  }
+
+  return <Typography.Paragraph>{nodes}</Typography.Paragraph>;
 }
 
 /**
@@ -79,7 +151,7 @@ function FillStem({
  * response 形状与后端 judge 对齐：
  *  - single_choice: { choice: "B" }
  *  - multiple_choice: { choices: ["A","B"] }
- *  - fill_blank: { blanks: { 1: "x", 2: "y" } }（按位置）
+ *  - fill_blank: { blanks: { 1: "x", 2: "y" } }（按空 id）
  *  - coding: { code: "..." }
  *  - essay: { text: "..." }
  */
@@ -157,6 +229,7 @@ export function QuestionPlayer({
         <Typography.Paragraph strong>
           <FillStem
             stem={stem}
+            blanks={payload?.blanks ?? []}
             values={blanks}
             onChange={(id, v) => {
               const next = { ...blanks, [id]: v };

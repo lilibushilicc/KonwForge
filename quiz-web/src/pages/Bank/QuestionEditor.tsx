@@ -103,6 +103,37 @@ export default function QuestionEditor() {
   const [catForm] = Form.useForm<{ name: string; parent_id?: number | null }>();
   const stemRef = useRef<HTMLTextAreaElement>(null);
 
+  /**
+   * 在题干输入框的光标位置插入文本（用于填空题插入 {{1}} 占位符）。
+   */
+  const insertAtCursor = (text: string) => {
+    // antd TextArea 的 ref 实际是 TextAreaRef（含 resizableTextArea.textArea），
+    // 这里用结构化断言访问，避免依赖 antd 类型包（也兼容类型缺失的裁剪环境）。
+    const el = (
+      stemRef.current as unknown as {
+        resizableTextArea?: { textArea: HTMLTextAreaElement };
+      }
+    )?.resizableTextArea?.textArea;
+    if (!el) {
+      // 兜底：直接追加到末尾
+      patch({ stem: s.stem + text });
+      return;
+    }
+    const start = el.selectionStart ?? s.stem.length;
+    const end = el.selectionEnd ?? s.stem.length;
+    const newStem = s.stem.slice(0, start) + text + s.stem.slice(end);
+    patch({ stem: newStem });
+    // 异步把光标移到插入文本之后
+    requestAnimationFrame(() => {
+      el.focus();
+      const pos = start + text.length;
+      el.setSelectionRange(pos, pos);
+    });
+  };
+
+  // 填空题配置的空列表，用于生成「插入空N」按钮
+  const fillBlanks: any[] = s.type === "fill_blank" ? s.payload?.blanks ?? [] : [];
+
   const createCatMut = useMutation({
     mutationFn: (v: { name: string; parent_id?: number | null }) =>
       categoriesApi.create({ name: v.name, parent_id: v.parent_id ?? null }),
@@ -225,9 +256,61 @@ export default function QuestionEditor() {
                   ref={stemRef}
                   autoSize={{ minRows: 2 }}
                   value={s.stem}
-                  placeholder="题干文本，可多行"
+                  placeholder={
+                    s.type === "fill_blank"
+                      ? "题干文本，用 {{1}}、{{2}} 标记空格位置"
+                      : "题干文本，可多行"
+                  }
                   onChange={(e) => patch({ stem: e.target.value })}
                 />
+                {s.type === "fill_blank" && (
+                  <div style={{ marginTop: 8 }}>
+                    <Alert
+                      type="info"
+                      showIcon
+                      message="填空题占位符格式"
+                      description={
+                        <div>
+                          <Typography.Paragraph style={{ margin: "0 0 8px 0" }}>
+                            推荐使用{" "}
+                            <code style={{ background: "rgba(0,0,0,0.06)", padding: "1px 4px", borderRadius: 4 }}>
+                              {`{{1}}`}
+                            </code>
+                            、
+                            <code style={{ background: "rgba(0,0,0,0.06)", padding: "1px 4px", borderRadius: 4 }}>
+                              {`{{2}}`}
+                            </code>{" "}
+                            标记空格位置，编号与下方「空1、空2…」的答案配置一一对应。
+                          </Typography.Paragraph>
+                          <Typography.Paragraph style={{ margin: "0 0 8px 0" }}>
+                            兼容旧格式{" "}
+                            <code style={{ background: "rgba(0,0,0,0.06)", padding: "1px 4px", borderRadius: 4 }}>
+                              ____
+                            </code>{" "}
+                            （四个下划线，按出现顺序自动编号）。
+                          </Typography.Paragraph>
+                          <Space wrap>
+                            {fillBlanks.length > 0 ? (
+                              fillBlanks.map((b: any, i: number) => (
+                                <Button
+                                  key={i}
+                                  size="small"
+                                  onClick={() => insertAtCursor(`{{${b?.id ?? (i + 1)}}}`)}
+                                >
+                                  插入空{b?.id ?? (i + 1)}
+                                </Button>
+                              ))
+                            ) : (
+                              <Typography.Text type="secondary">
+                                请先在下方添加至少一个空的配置
+                              </Typography.Text>
+                            )}
+                          </Space>
+                        </div>
+                      }
+                    />
+                  </div>
+                )}
               </Form.Item>
               <Form.Item label="难度">
                 <InputNumber

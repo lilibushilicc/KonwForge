@@ -1,4 +1,4 @@
-import { Button, Input, Space, Switch, Typography } from "antd";
+import { Alert, Button, Input, Space, Switch, Typography } from "antd";
 import { DeleteOutlined, PlusOutlined } from "@ant-design/icons";
 import type { EditProps, ViewProps } from "./SingleChoice";
 
@@ -50,6 +50,33 @@ export function FillBlankEditor({ payload, answer, onChange }: EditProps) {
 
   return (
     <Space direction="vertical" style={{ width: "100%" }}>
+      <Alert
+        type="info"
+        showIcon
+        message="填空题使用说明"
+        description={
+          <div>
+            <Typography.Paragraph style={{ margin: "0 0 4px 0" }}>
+              请在上方「题干」中用{" "}
+              <code style={{ background: "rgba(0,0,0,0.06)", padding: "1px 4px", borderRadius: 4 }}>
+                {`{{1}}`}
+              </code>
+              、
+              <code style={{ background: "rgba(0,0,0,0.06)", padding: "1px 4px", borderRadius: 4 }}>
+                {`{{2}}`}
+              </code>{" "}
+              标记空格位置，编号与下方「空1、空2…」一一对应。
+            </Typography.Paragraph>
+            <Typography.Paragraph style={{ margin: 0 }} type="secondary">
+              兼容旧格式{" "}
+              <code style={{ background: "rgba(0,0,0,0.06)", padding: "1px 4px", borderRadius: 4 }}>
+                ____
+              </code>{" "}
+              （四个下划线）。题干输入框下方有「插入空N」快捷按钮。
+            </Typography.Paragraph>
+          </div>
+        }
+      />
       {rows.map((r, i) => (
         <div key={i} style={{ border: "1px solid var(--border)", borderRadius: 8, padding: 12 }}>
           <Typography.Text type="secondary">空 {i + 1}</Typography.Text>
